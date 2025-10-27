@@ -247,7 +247,7 @@ def _normalize_stock_code(stock_code: str) -> str:
         return code[:6]
 
 
-async def _write_and_ingest_a_share(
+async def _write_and_ingest_ashare(
     filings_data: List[dict],
     knowledge_dir: Path,
 ) -> List[AShareFilingResult]:
@@ -481,7 +481,7 @@ async def _fetch_announcement_content(
     return ""
 
 
-async def fetch_a_share_filings(
+async def fetch_ashare_filings(
     stock_code: str,
     report_types: List[str] | str = "annual",
     year: Optional[int | List[int]] = None,
@@ -491,7 +491,7 @@ async def fetch_a_share_filings(
 
     Args:
         stock_code: Stock code (e.g.: 000001, 600036, etc.)
-        report_types: Report types, options: "annual", "semi-annual", "quarterly" or Chinese "年报", "半年报", "季报". Default is "annual"
+        report_types: Report types, options: "annual", "semi-annual", "quarterly". Default is "annual"
         year: Year filter, can be a single year or list of years. If not provided, fetch latest reports
         limit: Maximum number of records to fetch, default 10
 
@@ -502,8 +502,8 @@ async def fetch_a_share_filings(
         # Fetch latest annual report of Ping An Bank
         await fetch_a_share_filings("000001", "annual", limit=1)
 
-        # Fetch 2023 annual and semi-annual reports of Kweichow Moutai
-        await fetch_a_share_filings("600519", ["annual", "semi-annual"], year=2023)
+        # Fetch 2025 annual and semi-annual reports of Kweichow Moutai
+        await fetch_a_share_filings("600519", ["annual", "semi-annual"], year=2025)
     """
 
     # Normalize stock code
@@ -529,4 +529,4 @@ async def fetch_a_share_filings(
 
     # Write to files and import to knowledge base
     knowledge_dir = Path(get_knowledge_path())
-    return await _write_and_ingest_a_share(filings_data, knowledge_dir)
+    return await _write_and_ingest_ashare(filings_data, knowledge_dir)
