@@ -1,9 +1,11 @@
 import os
+import re
 from datetime import date, datetime
 from pathlib import Path
 from typing import Iterable, List, Optional, Sequence
 
 import aiofiles
+import aiohttp
 from agno.agent import Agent
 from agno.models.google import Gemini
 from agno.models.openrouter import OpenRouter
@@ -13,7 +15,12 @@ from edgar.entity.filings import EntityFilings
 from valuecell.utils.path import get_knowledge_path
 
 from .knowledge import insert_md_file_to_knowledge
-from .schemas import SECFilingMetadata, SECFilingResult
+from .schemas import (
+    AShareFilingMetadata,
+    AShareFilingResult,
+    SECFilingMetadata,
+    SECFilingResult,
+)
 
 
 def _ensure_list(value: str | Sequence[str] | None) -> List[str]:
@@ -225,3 +232,357 @@ async def _web_search_google(query: str) -> str:
     model = Gemini(id="gemini-2.5-flash", search=True)
     response = await Agent(model=model).arun(query)
     return response.content
+
+
+def _normalize_stock_code(stock_code: str) -> str:
+    """Normalize stock code format"""
+    # Remove possible prefixes and suffixes, keep only digits
+    code = re.sub(r"[^\d]", "", stock_code)
+    # Ensure it's a 6-digit number
+    if len(code) == 6:
+        return code
+    elif len(code) < 6:
+        return code.zfill(6)
+    else:
+        return code[:6]
+
+
+async def _write_and_ingest_a_share(
+    filings_data: List[dict],
+    knowledge_dir: Path,
+) -> List[AShareFilingResult]:
+    """Write A-share filing data to files and import to knowledge base"""
+    knowledge_dir.mkdir(parents=True, exist_ok=True)
+    results: List[AShareFilingResult] = []
+
+    for filing_data in filings_data:
+        # Build file name
+        stock_code = filing_data["stock_code"]
+        doc_type = filing_data["doc_type"]
+        period = filing_data["period_of_report"]
+        file_name = f"AShare_{stock_code}_{doc_type}_{period}.md"
+        path = knowledge_dir / file_name
+
+        # Use complete content returned from _fetch_announcement_content
+        content = filing_data.get(
+            "content",
+            f"""# {filing_data["company"]} ({stock_code}) {doc_type}
+
+## Basic Information
+- **Company Name**: {filing_data["company"]}
+- **Stock Code**: {stock_code}
+- **Exchange**: {filing_data["market"]}
+- **Report Type**: {doc_type}
+- **Report Period**: {period}
+- **Filing Date**: {filing_data["filing_date"]}
+
+## Filing Content
+{filing_data.get("announcement_title", "Filing content is being processed...")}
+
+---
+*Data Source: CNINFO*
+""",
+        )
+
+        # Write to file
+        async with aiofiles.open(path, "w", encoding="utf-8") as file:
+            await file.write(content)
+
+        # Create metadata
+        metadata = AShareFilingMetadata(
+            doc_type=doc_type,
+            company=filing_data["company"],
+            stock_code=stock_code,
+            market=filing_data["market"],
+            period_of_report=period,
+            filing_date=filing_data["filing_date"],
+        )
+
+        # Create result object
+        result = AShareFilingResult(file_name, path, metadata)
+        results.append(result)
+
+        # Import to knowledge base
+        await insert_md_file_to_knowledge(
+            name=file_name, path=path, metadata=metadata.__dict__
+        )
+
+    return results
+
+
+async def _fetch_cninfo_data(
+    stock_code: str, report_types: List[str], years: List[int], limit: int
+) -> List[dict]:
+    """Fetch real A-share filing data from CNINFO API
+
+    Args:
+        stock_code: Normalized stock code
+        report_types: List of report types
+        years: List of years
+        limit: Maximum number of records to fetch
+
+    Returns:
+        List[dict]: List of filing data
+    """
+
+    # CNINFO API configuration
+    base_url = "http://www.cninfo.com.cn/new/hisAnnouncement/query"
+
+    # Request headers configuration
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        "Accept": "*/*",
+        "Accept-Encoding": "gzip, deflate",
+        "Accept-Language": "zh-CN,zh;q=0.9",
+        "Connection": "keep-alive",
+        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+        "Host": "www.cninfo.com.cn",
+        "Origin": "http://www.cninfo.com.cn",
+        "Referer": "http://www.cninfo.com.cn/new/commonUrl/pageOfSearch?url=disclosure/list/search&lastPage=index",
+        "X-Requested-With": "XMLHttpRequest",
+    }
+
+    # Report type mapping (supports both English and Chinese for backward compatibility)
+    category_mapping = {
+        "annual": "category_ndbg_szsh",
+        "semi-annual": "category_bndbg_szsh",
+        "quarterly": "category_sjdbg_szsh",
+    }
+
+    # Determine exchange
+    column = "szse" if stock_code.startswith(("000", "002", "300")) else "sse"
+
+    filings_data = []
+    current_year = datetime.now().year
+    target_years = (
+        years if years else [current_year, current_year - 1, current_year - 2]
+    )
+
+    async with aiohttp.ClientSession() as session:
+        for report_type in report_types:
+            if len(filings_data) >= limit:
+                break
+
+            category = category_mapping.get(report_type, "category_ndbg_szsh")
+
+            # Build time range
+            for target_year in target_years:
+                if len(filings_data) >= limit:
+                    break
+
+                # Set search time range
+                start_date = f"{target_year}-01-01"
+                end_date = f"{target_year + 1}-01-01"
+                se_date = f"{start_date}~{end_date}"
+
+                # Build request parameters
+                # Build orgId based on stock code
+                if stock_code.startswith(("000", "002", "300")):
+                    # SZSE stocks
+                    org_id = f"gssz{stock_code.zfill(7)}"  # Pad to 7 digits
+                    plate = "sz"
+                else:
+                    # SSE stocks
+                    org_id = f"gssh{stock_code.zfill(7)}"  # Pad to 7 digits
+                    plate = "sh"
+
+                form_data = {
+                    "pageNum": "1",
+                    "pageSize": "30",
+                    "column": column,
+                    "tabName": "fulltext",
+                    "plate": plate,
+                    "stock": f"{stock_code},{org_id}",
+                    "searchkey": "",
+                    "secid": "",
+                    "category": f"{category};",
+                    "trade": "",
+                    "seDate": se_date,
+                    "sortName": "",
+                    "sortType": "",
+                    "isHLtitle": "true",
+                }
+
+                try:
+                    async with session.post(
+                        base_url, headers=headers, data=form_data
+                    ) as response:
+                        if response.status == 200:
+                            result = await response.json()
+                            announcements = result.get("announcements", [])
+
+                            if announcements is None:
+                                continue
+
+                            for announcement in announcements:
+                                if len(filings_data) >= limit:
+                                    break
+
+                                # Extract filing information
+                                filing_info = {
+                                    "stock_code": announcement.get(
+                                        "secCode", stock_code
+                                    ),
+                                    "company": announcement.get("secName", ""),
+                                    "market": "SZSE" if column == "szse" else "SSE",
+                                    "doc_type": report_type,
+                                    "period_of_report": f"{target_year}",
+                                    "filing_date": announcement.get("adjunctUrl", "")[
+                                        10:20
+                                    ]
+                                    if announcement.get("adjunctUrl")
+                                    else f"{target_year}-04-30",
+                                    "announcement_id": announcement.get(
+                                        "announcementId", ""
+                                    ),
+                                    "announcement_title": announcement.get(
+                                        "announcementTitle", ""
+                                    ),
+                                    "org_id": announcement.get("orgId", ""),
+                                    "content": "",  # Will fetch detailed content in subsequent steps
+                                }
+
+                                # Fetch detailed content
+                                content = await _fetch_announcement_content(
+                                    session, filing_info
+                                )
+                                filing_info["content"] = content
+
+                                filings_data.append(filing_info)
+
+                except Exception as e:
+                    print(
+                        f"Error fetching {stock_code} {report_type} {target_year} data: {e}"
+                    )
+                    continue
+
+    return filings_data
+
+
+async def _fetch_announcement_content(
+    session: aiohttp.ClientSession, filing_info: dict
+) -> str:
+    """Fetch detailed content of announcement
+
+    Args:
+        session: aiohttp session
+        filing_info: Filing information dictionary
+
+    Returns:
+        str: Announcement content
+    """
+    try:
+        # CNINFO announcement detail API
+        detail_url = "http://www.cninfo.com.cn/new/announcement/bulletin_detail"
+
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+        }
+
+        params = {
+            "announceId": filing_info.get("announcement_id", ""),
+            "flag": "true",
+            "announceTime": filing_info.get("filing_date", ""),
+        }
+
+        async with session.post(detail_url, headers=headers, params=params) as response:
+            if response.status == 200:
+                result = await response.json()
+
+                # Build filing content
+                content = f"""# {filing_info["company"]} ({filing_info["stock_code"]}) {filing_info["doc_type"]}
+
+## Basic Information
+- **Company Name**: {filing_info["company"]}
+- **Stock Code**: {filing_info["stock_code"]}
+- **Exchange**: {filing_info["market"]}
+- **Report Type**: {filing_info["doc_type"]}
+- **Report Period**: {filing_info["period_of_report"]}
+- **Filing Date**: {filing_info["filing_date"]}
+
+## Filing Content
+
+{filing_info.get("announcement_title", "")}
+
+## Financial Data
+*Note: Detailed financial data needs to be extracted from PDF files, basic information is shown here*
+
+PDF File Link: {result.get("fileUrl", "Not available")}
+
+---
+*Data Source: CNINFO*
+"""
+                return content
+
+    except Exception as e:
+        print(f"Error fetching announcement details: {e}")
+
+    # Return basic content
+    return f"""# {filing_info["company"]} ({filing_info["stock_code"]}) {filing_info["doc_type"]}
+
+## Basic Information
+- **Company Name**: {filing_info["company"]}
+- **Stock Code**: {filing_info["stock_code"]}
+- **Exchange**: {filing_info["market"]}
+- **Report Type**: {filing_info["doc_type"]}
+- **Report Period**: {filing_info["period_of_report"]}
+- **Filing Date**: {filing_info["filing_date"]}
+
+## Filing Content
+
+{filing_info.get("announcement_title", "")}
+
+---
+*Data Source: CNINFO*
+"""
+
+
+async def fetch_a_share_filings(
+    stock_code: str,
+    report_types: List[str] | str = "annual",
+    year: Optional[int | List[int]] = None,
+    limit: int = 10,
+) -> List[AShareFilingResult]:
+    """Fetch A-share filing data from CNINFO and import to knowledge base
+
+    Args:
+        stock_code: Stock code (e.g.: 000001, 600036, etc.)
+        report_types: Report types, options: "annual", "semi-annual", "quarterly" or Chinese "年报", "半年报", "季报". Default is "annual"
+        year: Year filter, can be a single year or list of years. If not provided, fetch latest reports
+        limit: Maximum number of records to fetch, default 10
+
+    Returns:
+        List[AShareFilingResult]: List of A-share filing results
+
+    Examples:
+        # Fetch latest annual report of Ping An Bank
+        await fetch_a_share_filings("000001", "annual", limit=1)
+
+        # Fetch 2023 annual and semi-annual reports of Kweichow Moutai
+        await fetch_a_share_filings("600519", ["annual", "semi-annual"], year=2023)
+    """
+
+    # Normalize stock code
+    normalized_code = _normalize_stock_code(stock_code)
+
+    # Normalize report types
+    report_types_list = _ensure_list(report_types)
+    if not report_types_list:
+        report_types_list = ["annual"]
+
+    # Normalize years
+    years_list = []
+    if year is not None:
+        if isinstance(year, int):
+            years_list = [year]
+        else:
+            years_list = list(year)
+
+    # Fetch real data from CNINFO
+    filings_data = await _fetch_cninfo_data(
+        normalized_code, report_types_list, years_list, limit
+    )
+
+    # Write to files and import to knowledge base
+    knowledge_dir = Path(get_knowledge_path())
+    return await _write_and_ingest_a_share(filings_data, knowledge_dir)
