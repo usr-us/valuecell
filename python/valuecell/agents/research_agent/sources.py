@@ -500,10 +500,10 @@ async def fetch_ashare_filings(
 
     Examples:
         # Fetch latest annual report of Ping An Bank
-        await fetch_a_share_filings("000001", "annual", limit=1)
+        await fetch_ashare_filings("000001", "annual", limit=1)
 
         # Fetch 2025 annual and semi-annual reports of Kweichow Moutai
-        await fetch_a_share_filings("600519", ["annual", "semi-annual"], year=2025)
+        await fetch_ashare_filings("600519", ["annual", "semi-annual"], year=2025)
     """
 
     # Normalize stock code
