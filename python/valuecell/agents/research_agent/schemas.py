@@ -35,6 +35,5 @@ class AShareFilingMetadata:
 class AShareFilingResult:
     """A-share filing result"""
 
-    name: str
-    path: Path
+    url: str
     metadata: AShareFilingMetadata

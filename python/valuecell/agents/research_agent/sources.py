@@ -14,7 +14,7 @@ from edgar.entity.filings import EntityFilings
 
 from valuecell.utils.path import get_knowledge_path
 
-from .knowledge import insert_md_file_to_knowledge
+from .knowledge import insert_md_file_to_knowledge, insert_pdf_file_to_knowledge
 from .schemas import (
     AShareFilingMetadata,
     AShareFilingResult,
@@ -260,33 +260,9 @@ async def _write_and_ingest_a_share(
         stock_code = filing_data["stock_code"]
         doc_type = filing_data["doc_type"]
         period = filing_data["period_of_report"]
-        file_name = f"AShare_{stock_code}_{doc_type}_{period}.md"
-        path = knowledge_dir / file_name
 
-        # Use complete content returned from _fetch_announcement_content
-        content = filing_data.get(
-            "content",
-            f"""# {filing_data["company"]} ({stock_code}) {doc_type}
-
-## Basic Information
-- **Company Name**: {filing_data["company"]}
-- **Stock Code**: {stock_code}
-- **Exchange**: {filing_data["market"]}
-- **Report Type**: {doc_type}
-- **Report Period**: {period}
-- **Filing Date**: {filing_data["filing_date"]}
-
-## Filing Content
-{filing_data.get("announcement_title", "Filing content is being processed...")}
-
----
-*Data Source: CNINFO*
-""",
-        )
-
-        # Write to file
-        async with aiofiles.open(path, "w", encoding="utf-8") as file:
-            await file.write(content)
+        # Get PDF URL from filing data
+        pdf_url = filing_data.get("pdf_url", "")
 
         # Create metadata
         metadata = AShareFilingMetadata(
@@ -299,13 +275,11 @@ async def _write_and_ingest_a_share(
         )
 
         # Create result object
-        result = AShareFilingResult(file_name, path, metadata)
+        result = AShareFilingResult(url=pdf_url, metadata=metadata)
         results.append(result)
 
-        # Import to knowledge base
-        await insert_md_file_to_knowledge(
-            name=file_name, path=path, metadata=metadata.__dict__
-        )
+        # Import to knowledge base - use PDF URL if available, otherwise use markdown file
+        await insert_pdf_file_to_knowledge(url=pdf_url, metadata=metadata.__dict__)
 
     return results
 
@@ -442,11 +416,11 @@ async def _fetch_cninfo_data(
                                     "content": "",  # Will fetch detailed content in subsequent steps
                                 }
 
-                                # Fetch detailed content
-                                content = await _fetch_announcement_content(
+                                # Fetch PDF URL
+                                pdf_url = await _fetch_announcement_content(
                                     session, filing_info
                                 )
-                                filing_info["content"] = content
+                                filing_info["pdf_url"] = pdf_url
 
                                 filings_data.append(filing_info)
 
@@ -462,14 +436,14 @@ async def _fetch_cninfo_data(
 async def _fetch_announcement_content(
     session: aiohttp.ClientSession, filing_info: dict
 ) -> str:
-    """Fetch detailed content of announcement
+    """Fetch PDF URL from CNINFO API
 
     Args:
         session: aiohttp session
         filing_info: Filing information dictionary
 
     Returns:
-        str: Announcement content
+        PDF URL string, or empty string if not available
     """
     try:
         # CNINFO announcement detail API
@@ -489,52 +463,22 @@ async def _fetch_announcement_content(
             if response.status == 200:
                 result = await response.json()
 
-                # Build filing content
-                content = f"""# {filing_info["company"]} ({filing_info["stock_code"]}) {filing_info["doc_type"]}
+                # Extract PDF link with fallback options
+                pdf_url = result.get("fileUrl", "")
+                if not pdf_url:
+                    # Fallback: construct URL from adjunctUrl if available
+                    announcement_data = result.get("announcement", {})
+                    adjunct_url = announcement_data.get("adjunctUrl", "")
+                    if adjunct_url:
+                        pdf_url = f"http://static.cninfo.com.cn/{adjunct_url}"
 
-## Basic Information
-- **Company Name**: {filing_info["company"]}
-- **Stock Code**: {filing_info["stock_code"]}
-- **Exchange**: {filing_info["market"]}
-- **Report Type**: {filing_info["doc_type"]}
-- **Report Period**: {filing_info["period_of_report"]}
-- **Filing Date**: {filing_info["filing_date"]}
-
-## Filing Content
-
-{filing_info.get("announcement_title", "")}
-
-## Financial Data
-*Note: Detailed financial data needs to be extracted from PDF files, basic information is shown here*
-
-PDF File Link: {result.get("fileUrl", "Not available")}
-
----
-*Data Source: CNINFO*
-"""
-                return content
+                return pdf_url
 
     except Exception as e:
         print(f"Error fetching announcement details: {e}")
 
-    # Return basic content
-    return f"""# {filing_info["company"]} ({filing_info["stock_code"]}) {filing_info["doc_type"]}
-
-## Basic Information
-- **Company Name**: {filing_info["company"]}
-- **Stock Code**: {filing_info["stock_code"]}
-- **Exchange**: {filing_info["market"]}
-- **Report Type**: {filing_info["doc_type"]}
-- **Report Period**: {filing_info["period_of_report"]}
-- **Filing Date**: {filing_info["filing_date"]}
-
-## Filing Content
-
-{filing_info.get("announcement_title", "")}
-
----
-*Data Source: CNINFO*
-"""
+    # Return empty string if failed
+    return ""
 
 
 async def fetch_a_share_filings(
