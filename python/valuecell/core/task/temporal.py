@@ -3,8 +3,10 @@ from typing import Optional
 
 from loguru import logger
 
+from valuecell.core.task.models import ScheduleConfig
 
-def calculate_next_execution_delay(schedule_config) -> Optional[float]:
+
+def calculate_next_execution_delay(schedule_config: ScheduleConfig) -> Optional[float]:
     """Calculate the delay in seconds until the next scheduled execution.
 
     Args:
