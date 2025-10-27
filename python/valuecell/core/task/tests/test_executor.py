@@ -34,7 +34,9 @@ class StubConversationService:
     def __init__(self) -> None:
         self.calls: list[tuple[str, str]] = []
 
-    async def ensure_conversation(self, user_id: str, conversation_id: str, agent_name: str):
+    async def ensure_conversation(
+        self, user_id: str, conversation_id: str, agent_name: str
+    ):
         self.calls.append((user_id, conversation_id))
 
 
@@ -150,9 +152,7 @@ async def test_execute_plan_guidance_message(task_service: TaskService):
         tasks=[],
     )
 
-    responses = [
-        resp async for resp in executor.execute_plan(plan, thread_id="thread")
-    ]
+    responses = [resp async for resp in executor.execute_plan(plan, thread_id="thread")]
 
     assert responses[0].event == StreamResponseEvent.MESSAGE_CHUNK
     assert responses[0].data.payload.content == "Please review"  # type: ignore[attr-defined]
@@ -185,7 +185,9 @@ async def test_emit_subagent_conversation_component(task_service: TaskService):
 
 
 @pytest.mark.asyncio
-async def test_sleep_with_cancellation(monkeypatch: pytest.MonkeyPatch, task_service: TaskService):
+async def test_sleep_with_cancellation(
+    monkeypatch: pytest.MonkeyPatch, task_service: TaskService
+):
     event_service = StubEventService()
     executor = TaskExecutor(
         agent_connections=SimpleNamespace(),

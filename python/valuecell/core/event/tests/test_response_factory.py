@@ -156,8 +156,8 @@ def test_schedule_task_result_component(factory: ResponseFactory):
         agent_name="agent",
     )
 
-    resp = factory.schedule_task_result_component(task, content="{\"result\":1}")
+    resp = factory.schedule_task_result_component(task, content='{"result":1}')
 
     assert resp.data.agent_name == "agent"
     assert resp.data.metadata == {"task_title": "Daily summary"}
-    assert resp.data.payload.content == "{\"result\":1}"  # type: ignore[attr-defined]
+    assert resp.data.payload.content == '{"result":1}'  # type: ignore[attr-defined]

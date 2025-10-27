@@ -77,7 +77,9 @@ def event_service(response_factory: ResponseFactory, conversation_service: Async
 
 
 @pytest.mark.asyncio
-async def test_emit_persists_items(event_service: EventResponseService, conversation_service: AsyncMock):
+async def test_emit_persists_items(
+    event_service: EventResponseService, conversation_service: AsyncMock
+):
     response = event_service.factory.message_response_general(
         event=NotifyResponseEvent.MESSAGE,
         conversation_id="conv",
@@ -97,7 +99,9 @@ async def test_emit_persists_items(event_service: EventResponseService, conversa
 
 
 @pytest.mark.asyncio
-async def test_emit_many(event_service: EventResponseService, conversation_service: AsyncMock):
+async def test_emit_many(
+    event_service: EventResponseService, conversation_service: AsyncMock
+):
     responses = [
         event_service.factory.message_response_general(
             event=NotifyResponseEvent.MESSAGE,
@@ -122,7 +126,9 @@ async def test_emit_many(event_service: EventResponseService, conversation_servi
 
 
 @pytest.mark.asyncio
-async def test_flush_task_response(event_service: EventResponseService, conversation_service: AsyncMock):
+async def test_flush_task_response(
+    event_service: EventResponseService, conversation_service: AsyncMock
+):
     await event_service.flush_task_response("conv", "thread", "task")
 
     conversation_service.add_item.assert_awaited_once()
@@ -131,7 +137,9 @@ async def test_flush_task_response(event_service: EventResponseService, conversa
 
 
 @pytest.mark.asyncio
-async def test_route_task_status(monkeypatch: pytest.MonkeyPatch, event_service: EventResponseService):
+async def test_route_task_status(
+    monkeypatch: pytest.MonkeyPatch, event_service: EventResponseService
+):
     sentinel = SimpleNamespace(done=True)
 
     async def fake_handle(factory, task, thread_id, event):

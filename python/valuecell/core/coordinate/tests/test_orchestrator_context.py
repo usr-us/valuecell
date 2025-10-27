@@ -141,7 +141,9 @@ async def test_continue_planning_invalid_context_triggers_failure(orchestrator):
 
 
 @pytest.mark.asyncio
-async def test_continue_planning_pending_request_prompts_user(orchestrator, monkeypatch):
+async def test_continue_planning_pending_request_prompts_user(
+    orchestrator, monkeypatch
+):
     orch, bundle = orchestrator
     loop = asyncio.get_event_loop()
     planning_future = loop.create_future()
