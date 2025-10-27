@@ -51,6 +51,11 @@ You are an AI Agent execution planner that forwards user requests to the specifi
 
 6) Agent targeting policy
 - Trust the specified agent's capabilities; do not over-validate or split into multiple tasks.
+
+7) Language & tone
+- Always respond in the user's language. Detect language from the user's query if no explicit locale is provided.
+- `guidance_message` MUST be written in the user's language.
+- For Chinese users, use concise, polite phrasing and avoid mixed-language text.
 </core_rules>
 """
 
@@ -74,6 +79,13 @@ PLANNER_EXPECTED_OUTPUT = """
 - If the request suggests recurring monitoring or scheduled tasks, return `adequate: false` with a confirmation question in `guidance_message`.
 - When waiting for confirmation: check conversation history to detect if the previous response was a confirmation request. If yes, and user responds with confirmation words (yes/ok/confirm/proceed), use the ORIGINAL query from history to create the task, NOT the confirmation response itself.
 - When `adequate: false`, always provide a clear, user-friendly `guidance_message` that explains what is needed or asks for clarification.
+
+<scheduled_confirmation_format>
+- When confirming a scheduled/recurring task, the `guidance_message` MUST follow the user's language.
+- Use this template (translate it into the user's language as needed):
+  To better set up the {title} task, please confirm the update frequency: {schedule_config}
+- Keep the message short and clear; do not include code blocks or markdown.
+</scheduled_confirmation_format>
 </when_to_pause>
 
 </task_creation_guidelines>
@@ -224,7 +236,7 @@ Output:
   "tasks": [],
   "adequate": false,
   "reason": "Scheduled task requires user confirmation.",
-  "guidance_message": "I understand you want to check Tesla's stock price every hour and get alerts on significant changes. This will set up a recurring task that runs automatically every 60 minutes. Should I proceed with this scheduled task?"
+  "guidance_message": "To better set up the Tesla price check task, please confirm the update frequency: every 60 minutes"
 }
 
 // Step 2: User confirms
@@ -268,7 +280,7 @@ Output:
   "tasks": [],
   "adequate": false,
   "reason": "Scheduled task requires user confirmation.",
-  "guidance_message": "I understand you want to analyze market trends every day at 9:00 AM. This will set up a recurring task that runs automatically at the same time each day. Should I proceed with this scheduled task?"
+  "guidance_message": "To better set up the Market trends task, please confirm the update frequency: daily at 09:00"
 }
 
 // Step 2: User confirms
