@@ -236,6 +236,8 @@ ResponsePayload = Union[
     ToolCallPayload,
 ]
 
+ResponseMetadata = Dict[str, str | int | float]
+
 
 ConversationItemEvent = Union[
     StreamResponseEvent,
@@ -275,6 +277,7 @@ class ConversationItem(BaseModel):
         None, description="Task ID if associated with a task"
     )
     payload: str = Field(..., description="The actual message payload")
+    metadata: str = Field("{}", description="Additional metadata for the item")
 
 
 class UnifiedResponseData(BaseModel):
@@ -294,6 +297,9 @@ class UnifiedResponseData(BaseModel):
     )
     payload: Optional[ResponsePayload] = Field(
         None, description="The message data payload"
+    )
+    metadata: Optional[ResponseMetadata] = Field(
+        None, description="Additional metadata for the response"
     )
     role: Role = Field(..., description="The role of the message sender")
     item_id: str = Field(default_factory=generate_item_id)

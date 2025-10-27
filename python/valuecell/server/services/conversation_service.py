@@ -117,6 +117,10 @@ class ConversationService:
                 role=role_str,
                 item_id=data.item_id,
             )
+            if data.agent_name:
+                message_data_with_meta.agent_name = data.agent_name
+            if data.metadata:
+                message_data_with_meta.metadata = data.metadata
 
             history_item = ConversationHistoryItem(
                 event=event_str, data=message_data_with_meta

@@ -76,4 +76,5 @@ class EventResponseService:
                 payload=item.payload,
                 item_id=item.item_id,
                 agent_name=item.agent_name,
+                metadata=item.metadata,
             )

@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from valuecell.core.conversation.manager import ConversationManager
 from valuecell.core.conversation.models import Conversation, ConversationStatus
 from valuecell.core.types import (
     ConversationItem,
     ConversationItemEvent,
+    ResponseMetadata,
     ResponsePayload,
     Role,
 )
@@ -82,11 +83,24 @@ class ConversationService:
         conversation_id: str,
         thread_id: Optional[str] = None,
         task_id: Optional[str] = None,
-        payload: ResponsePayload = None,
+        payload: Optional[ResponsePayload] = None,
         item_id: Optional[str] = None,
         agent_name: Optional[str] = None,
+        metadata: Optional[ResponseMetadata] = None,
     ) -> Optional[ConversationItem]:
-        """Persist a conversation item via the underlying manager."""
+        """Persist a conversation item via the underlying manager.
+        
+        Args:
+            role: Item role (USER, AGENT, SYSTEM)
+            event: Item event
+            conversation_id: Conversation ID
+            thread_id: Thread ID (optional)
+            task_id: Task ID (optional)
+            payload: Item payload
+            item_id: Item ID (optional)
+            agent_name: Agent name (optional)
+            metadata: Additional metadata as dict (optional)
+        """
 
         return await self._manager.add_item(
             role=role,
@@ -97,6 +111,7 @@ class ConversationService:
             payload=payload,
             item_id=item_id,
             agent_name=agent_name,
+            metadata=metadata,
         )
 
     async def get_conversation_items(

@@ -81,20 +81,14 @@ class ScheduledTaskResultAccumulator:
             content = "Task completed without output."
 
         component_payload = ScheduledTaskComponentContent(
-            task_id=self._task.task_id,
-            task_title=self._task.title,
             result=content,
             create_time=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
         )
         component_payload_json = component_payload.model_dump_json(exclude_none=True)
 
-        return response_factory.component_generator(
-            conversation_id=self._task.conversation_id,
-            thread_id=self._task.thread_id,
-            task_id=self._task.task_id,
+        return response_factory.schedule_task_result_component(
+            task=self._task,
             content=component_payload_json,
-            component_type=ComponentType.SCHEDULED_TASK_RESULT.value,
-            agent_name=self._task.agent_name,
         )
 
 
@@ -140,23 +134,15 @@ class TaskExecutor:
                     conversation_id=task.conversation_id,
                     agent_name=task.agent_name,
                 )
-                component_payload = json.dumps(
-                    {
-                        "conversation_id": task.conversation_id,
-                        "agent_name": task.agent_name,
-                        "phase": SubagentConversationPhase.START.value,
-                    }
+
+                # Emit subagent conversation start component
+                yield await self._emit_subagent_conversation_component(
+                    plan.conversation_id,
+                    thread_id,
+                    task,
+                    subagent_component_id,
+                    SubagentConversationPhase.START,
                 )
-                component = self._response_service.factory.component_generator(
-                    conversation_id=plan.conversation_id,
-                    thread_id=thread_id,
-                    task_id=task.task_id,
-                    content=component_payload,
-                    component_type=ComponentType.SUBAGENT_CONVERSATION.value,
-                    component_id=subagent_component_id,
-                    agent_name=task.agent_name,
-                )
-                yield await self._response_service.emit(component)
 
                 thread_started = self._response_service.factory.thread_started(
                     conversation_id=task.conversation_id,
@@ -182,23 +168,41 @@ class TaskExecutor:
                 yield await self._response_service.emit(failure)
             finally:
                 if task.handoff_from_super_agent:
-                    component_payload = json.dumps(
-                        {
-                            "conversation_id": task.conversation_id,
-                            "agent_name": task.agent_name,
-                            "phase": SubagentConversationPhase.END.value,
-                        }
+                    # Emit subagent conversation end component
+                    yield await self._emit_subagent_conversation_component(
+                        plan.conversation_id,
+                        thread_id,
+                        task,
+                        subagent_component_id,
+                        SubagentConversationPhase.END,
                     )
-                    component = self._response_service.factory.component_generator(
-                        conversation_id=plan.conversation_id,
-                        thread_id=thread_id,
-                        task_id=task.task_id,
-                        content=component_payload,
-                        component_type=ComponentType.SUBAGENT_CONVERSATION.value,
-                        component_id=subagent_component_id,
-                        agent_name=task.agent_name,
-                    )
-                    yield await self._response_service.emit(component)
+
+    async def _emit_subagent_conversation_component(
+        self,
+        super_agent_conversation_id: str,
+        thread_id: str,
+        subagent_task: Task,
+        component_id: str,
+        phase: SubagentConversationPhase,
+    ) -> BaseResponse:
+        """Emit a subagent conversation component with the specified phase."""
+        component_payload = json.dumps(
+            {
+                "conversation_id": subagent_task.conversation_id,
+                "agent_name": subagent_task.agent_name,
+                "phase": phase.value,
+            }
+        )
+        component = self._response_service.factory.component_generator(
+            conversation_id=super_agent_conversation_id,
+            thread_id=thread_id,
+            task_id=subagent_task.task_id,
+            content=component_payload,
+            component_type=ComponentType.SUBAGENT_CONVERSATION.value,
+            component_id=component_id,
+            agent_name=subagent_task.agent_name,
+        )
+        return await self._response_service.emit(component)
 
     async def _execute_task(
         self,
@@ -224,18 +228,13 @@ class TaskExecutor:
         )
 
         if task.schedule_config:
-            controller = self._response_service.factory.component_generator(
-                conversation_id=conversation_id,
-                thread_id=thread_id,
-                task_id=task_id,
-                content=ScheduledTaskComponentContent(
-                    task_id=task_id,
-                    task_title=task.title,
-                ).model_dump_json(exclude_none=True),
-                component_type=ComponentType.SCHEDULED_TASK_CONTROLLER.value,
-                agent_name=task.agent_name,
+            yield await self._response_service.emit(
+                self._response_service.factory.schedule_task_controller_component(
+                    conversation_id=conversation_id,
+                    thread_id=thread_id,
+                    task=task,
+                )
             )
-            yield await self._response_service.emit(controller)
             yield await self._response_service.emit(
                 self._response_service.factory.done(
                     conversation_id=conversation_id,
