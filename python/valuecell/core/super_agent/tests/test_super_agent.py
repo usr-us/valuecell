@@ -5,8 +5,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from valuecell.core.coordinate import super_agent as super_agent_mod
-from valuecell.core.super_agent import SuperAgent, SuperAgentDecision
+from valuecell.core.super_agent import core as super_agent_mod
+from valuecell.core.super_agent.core import SuperAgent, SuperAgentDecision
 from valuecell.core.types import UserInput, UserInputMetadata
 
 
@@ -51,7 +51,7 @@ async def test_super_agent_run_uses_underlying_agent(monkeypatch: pytest.MonkeyP
 
 
 def test_super_agent_prompts_are_non_empty():
-    from valuecell.core.coordinate.super_agent_prompts import (
+    from valuecell.core.super_agent.prompts import (
         SUPER_AGENT_EXPECTED_OUTPUT,
         SUPER_AGENT_INSTRUCTION,
     )
