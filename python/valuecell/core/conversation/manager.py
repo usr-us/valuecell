@@ -139,17 +139,24 @@ class ConversationManager:
         conversation_id: Optional[str] = None,
         event: Optional[ConversationItemEvent] = None,
         component_type: Optional[str] = None,
+        limit: Optional[int] = None,
+        offset: Optional[int] = None,
     ) -> List[ConversationItem]:
         """Get items for a conversation with optional filtering and pagination
 
         Args:
             conversation_id: Conversation ID
-            limit: Maximum number of items to return
-            offset: Number of items to skip
-            role: Filter by specific role (optional)
+            event: Filter by specific event (optional)
+            component_type: Filter by component type (optional)
+            limit: Maximum number of items to return (optional, default: all)
+            offset: Number of items to skip (optional, default: 0)
         """
         return await self.item_store.get_items(
-            conversation_id=conversation_id, event=event, component_type=component_type
+            conversation_id=conversation_id,
+            event=event,
+            component_type=component_type,
+            limit=limit,
+            offset=offset or 0,
         )
 
     async def get_latest_item(self, conversation_id: str) -> Optional[ConversationItem]:

@@ -9,7 +9,7 @@ from valuecell.core.event.buffer import ResponseBuffer, SaveItem
 from valuecell.core.event.factory import ResponseFactory
 from valuecell.core.event.router import RouteResult, handle_status_update
 from valuecell.core.task.models import Task
-from valuecell.core.types import BaseResponse, ConversationItemEvent
+from valuecell.core.types import BaseResponse
 
 
 class EventResponseService:
@@ -55,21 +55,6 @@ class EventResponseService:
 
         items = self._buffer.flush_task(conversation_id, thread_id, task_id)
         await self._persist_items(items)
-
-    async def get_conversation_history(
-        self,
-        conversation_id: str | None = None,
-        event: ConversationItemEvent | None = None,
-        component_type: str | None = None,
-    ) -> list[BaseResponse]:
-        """Load persisted conversation items and rebuild responses."""
-
-        items = await self._conversation_service.get_conversation_items(
-            conversation_id=conversation_id,
-            event=event,
-            component_type=component_type,
-        )
-        return [self._factory.from_conversation_item(item) for item in items]
 
     async def route_task_status(self, task: Task, thread_id: str, event) -> RouteResult:
         """Route a task status update without side-effects."""

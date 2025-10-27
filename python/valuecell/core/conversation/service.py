@@ -104,11 +104,23 @@ class ConversationService:
         conversation_id: Optional[str] = None,
         event: Optional[ConversationItemEvent] = None,
         component_type: Optional[str] = None,
+        limit: Optional[int] = None,
+        offset: Optional[int] = None,
     ) -> List[ConversationItem]:
-        """Load conversation items with optional filtering."""
+        """Load conversation items with optional filtering and pagination.
+        
+        Args:
+            conversation_id: Filter by conversation ID (optional)
+            event: Filter by event type (optional)
+            component_type: Filter by component type (optional)
+            limit: Maximum number of items to return (optional, default: all)
+            offset: Number of items to skip (optional, default: 0)
+        """
 
         return await self._manager.get_conversation_items(
             conversation_id=conversation_id,
             event=event,
             component_type=component_type,
+            limit=limit,
+            offset=offset,
         )
