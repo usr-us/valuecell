@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 from valuecell.core.conversation.manager import ConversationManager
 from valuecell.core.conversation.models import Conversation, ConversationStatus
@@ -89,7 +89,7 @@ class ConversationService:
         metadata: Optional[ResponseMetadata] = None,
     ) -> Optional[ConversationItem]:
         """Persist a conversation item via the underlying manager.
-        
+
         Args:
             role: Item role (USER, AGENT, SYSTEM)
             event: Item event
@@ -123,7 +123,7 @@ class ConversationService:
         offset: Optional[int] = None,
     ) -> List[ConversationItem]:
         """Load conversation items with optional filtering and pagination.
-        
+
         Args:
             conversation_id: Filter by conversation ID (optional)
             event: Filter by event type (optional)

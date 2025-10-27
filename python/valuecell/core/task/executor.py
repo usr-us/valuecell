@@ -99,13 +99,13 @@ class TaskExecutor:
         self,
         agent_connections: RemoteConnections,
         task_service: TaskService,
-        response_service: EventResponseService,
+        event_service: EventResponseService,
         conversation_service: ConversationService,
         poll_interval: float = DEFAULT_EXECUTION_POLL_INTERVAL,
     ) -> None:
         self._agent_connections = agent_connections
         self._task_service = task_service
-        self._response_service = response_service
+        self._event_service = event_service
         self._conversation_service = conversation_service
         self._poll_interval = poll_interval
 
@@ -116,14 +116,14 @@ class TaskExecutor:
         metadata: Optional[dict] = None,
     ) -> AsyncGenerator[BaseResponse, None]:
         if plan.guidance_message:
-            response = self._response_service.factory.message_response_general(
+            response = self._event_service.factory.message_response_general(
                 event=StreamResponseEvent.MESSAGE_CHUNK,
                 conversation_id=plan.conversation_id,
                 thread_id=thread_id,
                 task_id=generate_task_id(),
                 content=plan.guidance_message,
             )
-            yield await self._response_service.emit(response)
+            yield await self._event_service.emit(response)
             return
 
         for task in plan.tasks:
@@ -144,12 +144,12 @@ class TaskExecutor:
                     SubagentConversationPhase.START,
                 )
 
-                thread_started = self._response_service.factory.thread_started(
+                thread_started = self._event_service.factory.thread_started(
                     conversation_id=task.conversation_id,
                     thread_id=thread_id,
                     user_query=task.query,
                 )
-                yield await self._response_service.emit(thread_started)
+                yield await self._event_service.emit(thread_started)
 
             try:
                 await self._task_service.update_task(task)
@@ -158,14 +158,14 @@ class TaskExecutor:
             except Exception as exc:  # pragma: no cover - defensive logging
                 error_msg = f"(Error) Error executing {task.task_id}: {exc}"
                 logger.exception(error_msg)
-                failure = self._response_service.factory.task_failed(
+                failure = self._event_service.factory.task_failed(
                     conversation_id=plan.conversation_id,
                     thread_id=thread_id,
                     task_id=task.task_id,
                     content=error_msg,
                     agent_name=task.agent_name,
                 )
-                yield await self._response_service.emit(failure)
+                yield await self._event_service.emit(failure)
             finally:
                 if task.handoff_from_super_agent:
                     # Emit subagent conversation end component
@@ -193,7 +193,7 @@ class TaskExecutor:
                 "phase": phase.value,
             }
         )
-        component = self._response_service.factory.component_generator(
+        component = self._event_service.factory.component_generator(
             conversation_id=super_agent_conversation_id,
             thread_id=thread_id,
             task_id=subagent_task.task_id,
@@ -202,7 +202,7 @@ class TaskExecutor:
             component_id=component_id,
             agent_name=subagent_task.agent_name,
         )
-        return await self._response_service.emit(component)
+        return await self._event_service.emit(component)
 
     async def _execute_task(
         self,
@@ -228,15 +228,15 @@ class TaskExecutor:
         )
 
         if task.schedule_config:
-            yield await self._response_service.emit(
-                self._response_service.factory.schedule_task_controller_component(
+            yield await self._event_service.emit(
+                self._event_service.factory.schedule_task_controller_component(
                     conversation_id=conversation_id,
                     thread_id=thread_id,
                     task=task,
                 )
             )
-            yield await self._response_service.emit(
-                self._response_service.factory.done(
+            yield await self._event_service.emit(
+                self._event_service.factory.done(
                     conversation_id=conversation_id,
                     thread_id=thread_id,
                 )
@@ -267,18 +267,18 @@ class TaskExecutor:
                     break
 
             await self._task_service.complete_task(task_id)
-            completed = self._response_service.factory.task_completed(
+            completed = self._event_service.factory.task_completed(
                 conversation_id=conversation_id,
                 thread_id=thread_id,
                 task_id=task_id,
                 agent_name=task.agent_name,
             )
-            yield await self._response_service.emit(completed)
+            yield await self._event_service.emit(completed)
         except Exception as exc:
             await self._task_service.fail_task(task_id, str(exc))
             raise
         finally:
-            await self._response_service.flush_task_response(
+            await self._event_service.flush_task_response(
                 conversation_id=conversation_id,
                 thread_id=thread_id,
                 task_id=task_id,
@@ -305,24 +305,22 @@ class TaskExecutor:
         async for remote_task, event in remote_response:
             if event is None and remote_task.status.state == TaskState.submitted:
                 task.remote_task_ids.append(remote_task.id)
-                started = self._response_service.factory.task_started(
+                started = self._event_service.factory.task_started(
                     conversation_id=task.conversation_id,
                     thread_id=thread_id,
                     task_id=task.task_id,
                     agent_name=agent_name,
                 )
-                yield await self._response_service.emit(started)
+                yield await self._event_service.emit(started)
                 continue
 
             if isinstance(event, TaskStatusUpdateEvent):
-                route_result: RouteResult = (
-                    await self._response_service.route_task_status(
-                        task, thread_id, event
-                    )
+                route_result: RouteResult = await self._event_service.route_task_status(
+                    task, thread_id, event
                 )
                 responses = accumulator.consume(route_result.responses)
                 for resp in responses:
-                    yield await self._response_service.emit(resp)
+                    yield await self._event_service.emit(resp)
                 for side_effect in route_result.side_effects:
                     if side_effect.kind == SideEffectKind.FAIL_TASK:
                         await self._task_service.fail_task(
@@ -340,9 +338,9 @@ class TaskExecutor:
                 )
                 continue
 
-        final_component = accumulator.finalize(self._response_service.factory)
+        final_component = accumulator.finalize(self._event_service.factory)
         if final_component is not None:
-            yield await self._response_service.emit(final_component)
+            yield await self._event_service.emit(final_component)
 
         return
 

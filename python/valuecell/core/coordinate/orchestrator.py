@@ -70,21 +70,21 @@ class AgentOrchestrator:
     def __init__(
         self,
         conversation_service: ConversationService | None = None,
-        response_service: EventResponseService | None = None,
+        event_service: EventResponseService | None = None,
         plan_service: PlanService | None = None,
         super_agent_service: SuperAgentService | None = None,
         task_executor: TaskExecutor | None = None,
     ) -> None:
         services = AgentServiceBundle.compose(
             conversation_service=conversation_service,
-            response_service=response_service,
+            event_service=event_service,
             plan_service=plan_service,
             super_agent_service=super_agent_service,
             task_executor=task_executor,
         )
 
         self.conversation_service = services.conversation_service
-        self.response_service = services.response_service
+        self.event_service = services.event_service
         self.super_agent_service = services.super_agent_service
         self.plan_service = services.plan_service
         self.task_executor = services.task_executor
@@ -186,10 +186,10 @@ class AgentOrchestrator:
             )
 
             if created:
-                started = self.response_service.factory.conversation_started(
+                started = self.event_service.factory.conversation_started(
                     conversation_id=conversation_id
                 )
-                yield await self.response_service.emit(started)
+                yield await self.event_service.emit(started)
 
             if conversation.status == ConversationStatus.REQUIRE_USER_INPUT:
                 async for response in self._handle_conversation_continuation(
@@ -204,12 +204,12 @@ class AgentOrchestrator:
             logger.exception(
                 f"Error processing user input for conversation {conversation_id}"
             )
-            failure = self.response_service.factory.system_failed(
+            failure = self.event_service.factory.system_failed(
                 conversation_id, f"(Error) Error processing request: {str(e)}"
             )
-            yield await self.response_service.emit(failure)
+            yield await self.event_service.emit(failure)
         finally:
-            yield self.response_service.factory.done(conversation_id)
+            yield self.event_service.factory.done(conversation_id)
 
     async def _handle_conversation_continuation(
         self, user_input: UserInput
@@ -228,32 +228,32 @@ class AgentOrchestrator:
 
         # Validate execution context exists
         if conversation_id not in self._execution_contexts:
-            failure = self.response_service.factory.system_failed(
+            failure = self.event_service.factory.system_failed(
                 conversation_id,
                 "No execution context found for this conversation. The conversation may have expired.",
             )
-            yield await self.response_service.emit(failure)
+            yield await self.event_service.emit(failure)
             return
 
         context = self._execution_contexts[conversation_id]
 
         # Validate context integrity and user consistency
         if not self._validate_execution_context(context, user_id):
-            failure = self.response_service.factory.system_failed(
+            failure = self.event_service.factory.system_failed(
                 conversation_id,
                 "Invalid execution context or user mismatch.",
             )
-            yield await self.response_service.emit(failure)
+            yield await self.event_service.emit(failure)
             await self._cancel_execution(conversation_id)
             return
 
         thread_id = generate_thread_id()
-        response = self.response_service.factory.thread_started(
+        response = self.event_service.factory.thread_started(
             conversation_id=conversation_id,
             thread_id=thread_id,
             user_query=user_input.query,
         )
-        yield await self.response_service.emit(response)
+        yield await self.event_service.emit(response)
 
         # Provide user response and resume execution
         # If we are in an execution stage, store the pending response for resume
@@ -270,11 +270,11 @@ class AgentOrchestrator:
                 yield response
         # Resuming execution stage is not yet supported
         else:
-            failure = self.response_service.factory.system_failed(
+            failure = self.event_service.factory.system_failed(
                 conversation_id,
                 "Resuming execution stage is not yet supported.",
             )
-            yield await self.response_service.emit(failure)
+            yield await self.event_service.emit(failure)
 
     async def _handle_new_request(
         self, user_input: UserInput
@@ -286,12 +286,12 @@ class AgentOrchestrator:
         """
         conversation_id = user_input.meta.conversation_id
         thread_id = generate_thread_id()
-        response = self.response_service.factory.thread_started(
+        response = self.event_service.factory.thread_started(
             conversation_id=conversation_id,
             thread_id=thread_id,
             user_query=user_input.query,
         )
-        yield await self.response_service.emit(response)
+        yield await self.event_service.emit(response)
 
         # 1) Super Agent triage phase (pre-planning) - skip if target agent is specified
         if user_input.target_agent_name == self.super_agent_service.name:
@@ -299,7 +299,7 @@ class AgentOrchestrator:
                 user_input
             )
             if super_outcome.decision == SuperAgentDecision.ANSWER:
-                ans = self.response_service.factory.message_response_general(
+                ans = self.event_service.factory.message_response_general(
                     StreamResponseEvent.MESSAGE_CHUNK,
                     conversation_id,
                     thread_id,
@@ -307,7 +307,7 @@ class AgentOrchestrator:
                     content=super_outcome.answer_content,
                     agent_name=self.super_agent_service.name,
                 )
-                yield await self.response_service.emit(ans)
+                yield await self.event_service.emit(ans)
                 return
 
             if super_outcome.decision == SuperAgentDecision.HANDOFF_TO_PLANNER:
@@ -377,12 +377,12 @@ class AgentOrchestrator:
                 # Update conversation status and send user input request
                 await self.conversation_service.require_user_input(conversation_id)
                 prompt = self.plan_service.get_request_prompt(conversation_id) or ""
-                response = self.response_service.factory.plan_require_user_input(
+                response = self.event_service.factory.plan_require_user_input(
                     conversation_id,
                     thread_id,
                     prompt,
                 )
-                yield await self.response_service.emit(response)
+                yield await self.event_service.emit(response)
                 return
 
             await asyncio.sleep(ASYNC_SLEEP_INTERVAL)
@@ -425,12 +425,12 @@ class AgentOrchestrator:
         original_user_input = context.get_metadata(ORIGINAL_USER_INPUT)
 
         if not all([planning_task, original_user_input]):
-            failure = self.response_service.factory.plan_failed(
+            failure = self.event_service.factory.plan_failed(
                 conversation_id,
                 thread_id,
                 "Invalid planning context - missing required data",
             )
-            yield await self.response_service.emit(failure)
+            yield await self.event_service.emit(failure)
             await self._cancel_execution(conversation_id)
             return
 
@@ -441,10 +441,10 @@ class AgentOrchestrator:
                 prompt = self.plan_service.get_request_prompt(conversation_id) or ""
                 # Ensure conversation is set to require user input again for repeated prompts
                 await self.conversation_service.require_user_input(conversation_id)
-                response = self.response_service.factory.plan_require_user_input(
+                response = self.event_service.factory.plan_require_user_input(
                     conversation_id, thread_id, prompt
                 )
-                yield await self.response_service.emit(response)
+                yield await self.event_service.emit(response)
                 return
 
             await asyncio.sleep(ASYNC_SLEEP_INTERVAL)

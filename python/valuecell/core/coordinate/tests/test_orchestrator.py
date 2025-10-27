@@ -195,7 +195,7 @@ def _orchestrator(
     agent_connections.start_agent = AsyncMock()
 
     conversation_service = ConversationService(manager=mock_conversation_manager)
-    response_service = EventResponseService(conversation_service=conversation_service)
+    event_service = EventResponseService(conversation_service=conversation_service)
     task_service = TaskService(manager=mock_task_manager)
     plan_service = PlanService(
         agent_connections=agent_connections, execution_planner=mock_planner
@@ -204,14 +204,14 @@ def _orchestrator(
     task_executor = TaskExecutor(
         agent_connections=agent_connections,
         task_service=task_service,
-        response_service=response_service,
+        event_service=event_service,
         conversation_service=conversation_service,
     )
 
     bundle = SimpleNamespace(
         agent_connections=agent_connections,
         conversation_service=conversation_service,
-        response_service=response_service,
+        event_service=event_service,
         task_service=task_service,
         plan_service=plan_service,
         super_agent_service=super_agent_service,

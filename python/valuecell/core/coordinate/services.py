@@ -33,7 +33,7 @@ class AgentServiceBundle:
 
     agent_connections: RemoteConnections
     conversation_service: ConversationService
-    response_service: EventResponseService
+    event_service: EventResponseService
     task_service: TaskService
     plan_service: PlanService
     super_agent_service: SuperAgentService
@@ -44,7 +44,7 @@ class AgentServiceBundle:
         cls,
         *,
         conversation_service: Optional[ConversationService] = None,
-        response_service: Optional[EventResponseService] = None,
+        event_service: Optional[EventResponseService] = None,
         plan_service: Optional[PlanService] = None,
         super_agent_service: Optional[SuperAgentService] = None,
         task_executor: Optional[TaskExecutor] = None,
@@ -55,8 +55,8 @@ class AgentServiceBundle:
 
         if conversation_service is not None:
             conv_service = conversation_service
-        elif response_service is not None:
-            conv_service = response_service.conversation_service
+        elif event_service is not None:
+            conv_service = event_service.conversation_service
         else:
             base_manager = ConversationManager(
                 conversation_store=SQLiteConversationStore(resolve_db_path()),
@@ -64,7 +64,7 @@ class AgentServiceBundle:
             )
             conv_service = ConversationService(manager=base_manager)
 
-        resp_service = response_service or EventResponseService(
+        event_service = event_service or EventResponseService(
             conversation_service=conv_service
         )
         t_service = TaskService()
@@ -73,14 +73,14 @@ class AgentServiceBundle:
         executor = task_executor or TaskExecutor(
             agent_connections=connections,
             task_service=t_service,
-            response_service=resp_service,
+            event_service=event_service,
             conversation_service=conv_service,
         )
 
         return cls(
             agent_connections=connections,
             conversation_service=conv_service,
-            response_service=resp_service,
+            event_service=event_service,
             task_service=t_service,
             plan_service=p_service,
             super_agent_service=sa_service,

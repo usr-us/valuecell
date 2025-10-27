@@ -565,7 +565,7 @@ class ResponseFactory:
                 "task_title": task.title,
             },
         )
-    
+
     def schedule_task_result_component(
         self,
         task: Task,
@@ -576,7 +576,7 @@ class ResponseFactory:
         Args:
             task: The Task instance.
             result_content: Serialized content representing the task result.
-        
+
         Returns:
             ComponentGeneratorResponse wrapping the payload.
         """
