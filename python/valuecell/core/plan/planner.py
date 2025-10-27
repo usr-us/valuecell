@@ -25,7 +25,7 @@ from valuecell.core.types import UserInput
 from valuecell.utils import generate_uuid
 from valuecell.utils.env import agent_debug_mode_enabled
 from valuecell.utils.model import get_model
-from valuecell.utils.uuid import generate_conversation_id, generate_thread_id
+from valuecell.utils.uuid import generate_conversation_id
 
 from .models import ExecutionPlan, PlannerInput, PlannerResponse
 from .prompts import (
@@ -262,9 +262,12 @@ class ExecutionPlanner:
         """
         # task_brief is a _TaskBrief model instance
 
+        # Reuse parent thread_id across subagent handoff.
+        # When handing off from Super Agent, a NEW conversation_id is created for the subagent,
+        # but we PRESERVE the parent thread_id to correlate the entire flow as one interaction.
         if handoff_from_super_agent:
             conversation_id = generate_conversation_id()
-            thread_id = generate_thread_id()
+            # Do NOT override thread_id here (keep the parent's thread_id per Spec A)
 
         return Task(
             conversation_id=conversation_id,
