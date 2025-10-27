@@ -278,7 +278,7 @@ async def _write_and_ingest_a_share(
         result = AShareFilingResult(url=pdf_url, metadata=metadata)
         results.append(result)
 
-        # Import to knowledge base - use PDF URL if available, otherwise use markdown file
+        # Import to knowledge base - use PDF URL if available
         await insert_pdf_file_to_knowledge(url=pdf_url, metadata=metadata.__dict__)
 
     return results
