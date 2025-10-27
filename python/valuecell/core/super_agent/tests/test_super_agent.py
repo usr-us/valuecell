@@ -7,6 +7,7 @@ import pytest
 
 from valuecell.core.super_agent import core as super_agent_mod
 from valuecell.core.super_agent.core import SuperAgent, SuperAgentDecision
+from valuecell.core.super_agent.service import SuperAgentService
 from valuecell.core.types import UserInput, UserInputMetadata
 
 
@@ -58,3 +59,23 @@ def test_super_agent_prompts_are_non_empty():
 
     assert "<purpose>" in SUPER_AGENT_INSTRUCTION
     assert '"decision"' in SUPER_AGENT_EXPECTED_OUTPUT
+
+
+@pytest.mark.asyncio
+async def test_super_agent_service_delegates_to_underlying_agent():
+    fake_agent = SimpleNamespace(
+        name="Helper",
+        run=AsyncMock(return_value="result"),
+    )
+    service = SuperAgentService(super_agent=fake_agent)
+    user_input = UserInput(
+        query="test",
+        target_agent_name="Helper",
+        meta=UserInputMetadata(conversation_id="conv", user_id="user"),
+    )
+
+    assert service.name == "Helper"
+    outcome = await service.run(user_input)
+
+    assert outcome == "result"
+    fake_agent.run.assert_awaited_once_with(user_input)
